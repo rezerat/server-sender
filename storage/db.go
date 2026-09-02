@@ -28,16 +28,17 @@ func Сonnect() error {
 	return nil
 }
 
-func SaveDevice(nickname string, PubKey []byte) error{
-    query := `INSERT INTO devices (client_id, public_key) VALUES ($1, $2)`
-    _, err := pool.Exec(context.Background(), query, nickname, PubKey)
+func SaveDevice(clientId string, nickname string, pubKey []byte) error{
+    query := `INSERT INTO devices (client_id, nickname, public_key) VALUES ($1, $2, $3)`
+    println(nickname)
+    _, err := pool.Exec(context.Background(), query, clientId, nickname, pubKey)
     return err
 
 }
 
 func GetPublicKey(clientId string) ([]byte, error) {
     pubKey := []byte{}
-    query := `SELECT slice_pubKey WHERE client_id = $1`
+    query := `SELECT public_key FROM devices WHERE client_id = $1`
     err := pool.QueryRow(context.Background(), query, clientId).Scan(&pubKey)
     if err != nil {
         return nil, err

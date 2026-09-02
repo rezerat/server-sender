@@ -57,7 +57,6 @@ func readClientHello(conn net.Conn) (byte, string, []byte, error) {
 		return 0, "", nil, fmt.Errorf("missing opcode")
 	}
 	opCode := opBuf[0]
-
     lenghtBuf := make([]byte, 1)
     _, err := io.ReadFull(conn, lenghtBuf)
     if err != nil {
@@ -93,7 +92,8 @@ func getUser(clientId string, pubKey []byte) (user, error) {
             fmt.Println("New user - will be added...")
 
             nickname := generateNickname()
-            err := storage.SaveDevice(nickname, pubKey)
+            println(nickname)
+            err := storage.SaveDevice(clientId, nickname, pubKey)
             if err != nil {
                 return user{}, fmt.Errorf("Registration error %v", err)
                 
