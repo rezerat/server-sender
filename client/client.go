@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -14,16 +15,18 @@ import (
 
 
 type config struct {
-    ClientId string
-    PrivateKey []byte
-    PublicKey []byte
+
+    ClientId string  `json:"Client-id"`
+    PrivateKey []byte `json:"Private-key"`
+    PublicKey []byte  `json:"Public-key"`
+    IsRegistered bool  `json:"Registration"`
+
 }
 
 const configName = "client_config.json"
 
 func InitConfig() (*config, bool, error){
-    configPath := getConfigPath()
-    data, err := os.ReadFile(configPath)
+    data, err := os.ReadFile(getConfigPath())
     if err == nil {
         var cfg config
         if err := json.Unmarshal(data, &cfg); err != nil {
@@ -44,17 +47,27 @@ func InitConfig() (*config, bool, error){
             ClientId: newClientId,
             PublicKey: pubKey,
             PrivateKey: prKey,
+            IsRegistered: false,
         }
-        fileData, _ := json.MarshalIndent(cfg, "", " ")
 
-        err = os.WriteFile(configPath, fileData, 0600)
+        err = saveConfig(&cfg)
         if err != nil {
-            return nil, false, fmt.Errorf("Can't save config file: %v", err)
+            return nil, false, fmt.Errorf("Can't generate config for user : %v\n", err)
         }
         return &cfg, true, nil
     }
     return nil, false, err
 }
+
+func saveConfig(cfg *config) error {
+    fileData, _ := json.MarshalIndent(cfg, "", " ")
+    err := os.WriteFile(getConfigPath(), fileData, 0600)
+        if err != nil {
+            return fmt.Errorf("Can't save config file: %v", err)
+        }
+    return nil
+}
+
 
 func getConfigPath() string {
     configDir, err := os.UserConfigDir()
@@ -67,7 +80,7 @@ func getConfigPath() string {
 }
 
 
-func SendRegisterPacket(conn net.Conn, cfg *config){
+func SendRegisterPacket(conn net.Conn, cfg *config) error {
     var payload []byte
     payload = append(payload, 1)
 
@@ -79,21 +92,35 @@ func SendRegisterPacket(conn net.Conn, cfg *config){
 
     _, err := conn.Write(payload)
 	if err != nil {
-		fmt.Printf("Error sending register packet: %v\n", err)
+		return fmt.Errorf("Error sending register packet: %v\n", err)
 	}
+
+    responsebuf := make([]byte, 1)
+    _, err = io.ReadFull(conn, responsebuf)
+    if err != nil {
+        return fmt.Errorf("No response from the server after registation %v\n", err)
+    }
+    switch responsebuf[0] {
+    case byte(0x01):
+        cfg.IsRegistered = true
+        saveConfig(cfg)
+    case byte(0x02):
+        // TODO
+        InitConfig()
+    }
+    return nil
 }
 
-// func SendHello() {
-//     conn, err := net.Dial("tcp", "0.0.0.0:8080")
-//     if err != nil {
-//         println(err)
-//     }
+func SendLoginPacket(conn net.Conn, cfg *config) error{
+    var payload []byte
+    payload = append(payload, 2)
+    idBytes :=  []byte(cfg.ClientId)
+    payload = append(payload, byte(len(idBytes)))
+    payload = append(payload, idBytes...)
+    _, err := conn.Write(payload)
 
-//     opCode := []byte{1}
-//     reg = true
-//     conn.Write(opCode)
-//     os.Stat()
-    
-
-
-// }
+    if err != nil {
+        return fmt.Errorf("Log in error :%v\n", err)
+    }
+    return nil
+}

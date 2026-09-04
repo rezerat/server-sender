@@ -23,8 +23,10 @@ type user struct {
 }
 
 const (
-	opRegister = 1
-	opLogin    = 2
+	opRegister byte = 1
+	opLogin    byte = 2
+    statusSuccess byte = 0x01
+    statusError   byte = 0x02
 )
 
 func generateNickname() string {
@@ -35,7 +37,7 @@ func generateNickname() string {
 
 func HandleConnection(conn net.Conn) {
     defer conn.Close()
-    fmt.Printf("New connection from %s\n", conn.RemoteAddr().String())
+    fmt.Printf("[HC] New connection from %s\n", conn.RemoteAddr().String())
     _, clientId, pubKey, err := readClientHello(conn)
     if err != nil {
         fmt.Printf("Packet read error: %v\n", err)
@@ -44,9 +46,11 @@ func HandleConnection(conn net.Conn) {
 
     user, err := getUser(clientId, pubKey)
     if err != nil {
+        conn.Write([]byte{statusError})
         fmt.Printf("Can not get user : %v\n", err)
         return
     }
+    conn.Write([]byte{statusSuccess})
     fmt.Println(user)
     
 }
@@ -56,7 +60,9 @@ func readClientHello(conn net.Conn) (byte, string, []byte, error) {
 	if _, err := io.ReadFull(conn, opBuf); err != nil {
 		return 0, "", nil, fmt.Errorf("missing opcode")
 	}
+    // 1 || 2
 	opCode := opBuf[0]
+
     lenghtBuf := make([]byte, 1)
     _, err := io.ReadFull(conn, lenghtBuf)
     if err != nil {
@@ -83,7 +89,7 @@ func readClientHello(conn net.Conn) (byte, string, []byte, error) {
 
 
 func getUser(clientId string, pubKey []byte) (user, error) {
-    _, err := storage.GetPublicKey(clientId)
+    sPubKey, err := storage.GetPublicKey(clientId)
     if err != nil {
         if errors.Is(err, pgx.ErrNoRows) {
             if len(pubKey) == 0 {
@@ -99,6 +105,7 @@ func getUser(clientId string, pubKey []byte) (user, error) {
                 
             }
             fmt.Printf("User - %v added to database!\n", nickname)
+             // opReg --> opSuccess(client)
             return user{
                 clientId: clientId,
                 pubKey: pubKey,
@@ -111,7 +118,7 @@ func getUser(clientId string, pubKey []byte) (user, error) {
     } else {
         return user{
         clientId: clientId,
-        pubKey:   pubKey, 
+        pubKey:   sPubKey, 
     }, nil
     }
 }
@@ -177,4 +184,3 @@ func getUser(clientId string, pubKey []byte) (user, error) {
 //     println("heres")
 //     return plaintext, nil
 // }
-

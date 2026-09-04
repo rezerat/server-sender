@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -14,9 +15,8 @@ var pool *pgxpool.Pool
 func Сonnect() error {
     err := godotenv.Load(".env")
     if err != nil {
-        fmt.Printf("Env not found \n%v", err)
-    }
-
+		log.Println(".env doesn't find")
+	}
     pool, err = pgxpool.New(context.Background(), os.Getenv("DATABASE_URL"))
     if err != nil {
         return fmt.Errorf("Pool creation error: %w\n", err)

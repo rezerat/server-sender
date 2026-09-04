@@ -10,7 +10,7 @@ import (
 func main() {
     err := storage.Сonnect()
     if err != nil {
-        fmt.Println("Server can't connect to the database %w\n", err)
+        fmt.Printf("Server can't connect to the database %v", err)
         return
         
     }
@@ -29,10 +29,9 @@ func main() {
         conn, err := channel.Accept()
         if err != nil {
             fmt.Printf("Something went wrong! \n%v", err)
-            continue
+            
         }
         go server.HandleConnection(conn)
     }
-
 
 }
