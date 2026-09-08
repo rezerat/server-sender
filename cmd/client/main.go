@@ -32,7 +32,7 @@ func main() {
     ansBuf := make([]byte, 1)
     _, _ = io.ReadFull(conn, ansBuf)
     if ansBuf[0] == 0x01 {
-        return
+        
     }
 
 }

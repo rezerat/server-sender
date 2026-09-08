@@ -1,14 +1,11 @@
 package server
 
 import (
-	"errors"
 	"fmt"
-	"goServer/storage"
+	"goServer/protoError"
 	"io"
 	"math/rand"
 	"net"
-
-	"github.com/jackc/pgx/v5"
 )
 
 var (
@@ -26,7 +23,12 @@ const (
 	opRegister byte = 1
 	opLogin    byte = 2
     statusSuccess byte = 0x01
+    missingPubKey byte = 0x02
     statusError   byte = 0x02
+    opCodeMissing byte = 0x03
+    missingClientIdSize byte = 0x5
+    missingClientId byte = 0x4
+    regErrorCode  byte = 0x99
 )
 
 func generateNickname() string {
@@ -38,27 +40,37 @@ func generateNickname() string {
 func HandleConnection(conn net.Conn) {
     defer conn.Close()
     fmt.Printf("[HC] New connection from %s\n", conn.RemoteAddr().String())
-    _, clientId, pubKey, err := readClientHello(conn)
+
+    opCode, clientId, pubKey, err := readClientHello(conn)
     if err != nil {
         fmt.Printf("Packet read error: %v\n", err)
         return
     }
+    fmt.Println(clientId, pubKey, opCode)
 
-    user, err := getUser(clientId, pubKey)
-    if err != nil {
-        conn.Write([]byte{statusError})
-        fmt.Printf("Can not get user : %v\n", err)
-        return
-    }
-    conn.Write([]byte{statusSuccess})
-    fmt.Println(user)
+    
+
+    // user, err := getUser(clientId, pubKey)
+    // if err != nil {
+    //     // TODO::
+    //     // need to know all possible errors, to send diff codes
+    //     conn.Write([]byte{statusError})
+    //     fmt.Printf("Can not get user : %v\n", err)
+    //     return
+    // }
+    // conn.Write([]byte{statusSuccess})
+    // fmt.Println(user)
     
 }
 
 func readClientHello(conn net.Conn) (byte, string, []byte, error) {
     opBuf := make([]byte, 1)
 	if _, err := io.ReadFull(conn, opBuf); err != nil {
-		return 0, "", nil, fmt.Errorf("missing opcode")
+		return 0, "", nil, &protoError.ProtocolError{
+            OpCode: opCodeMissing,
+            ClientMsg: "Server does't get an operation code from client",
+            InternalError: err,
+        }
 	}
     // 1 || 2
 	opCode := opBuf[0]
@@ -66,21 +78,33 @@ func readClientHello(conn net.Conn) (byte, string, []byte, error) {
     lenghtBuf := make([]byte, 1)
     _, err := io.ReadFull(conn, lenghtBuf)
     if err != nil {
-        return 0, "", nil, fmt.Errorf("Error Client id sending\n")
+        return 0, "", nil, &protoError.ProtocolError{
+            OpCode: missingClientIdSize,
+            ClientMsg: "Server does't get the client Id size",
+            InternalError: err,
+        }
     }
 
     idLenght := int(lenghtBuf[0])
     idBuf := make([]byte, idLenght)
     _, err = io.ReadFull(conn, idBuf)
     if err != nil {
-        return 0, "", nil, fmt.Errorf("Missing Client id packet\n")
+        return 0, "", nil, &protoError.ProtocolError{
+            OpCode: missingClientId,
+            ClientMsg: "Server does't get the client Id",
+            InternalError: err,
+        }
     }
     var pubKeyBuf []byte
     if opCode == opRegister {
         pubKeyBuf = make([]byte, 32)
         _, err = io.ReadFull(conn, pubKeyBuf)
         if err != nil {
-            return 0, "", nil, fmt.Errorf("Missing Public key packet\n")
+            return 0, "", nil, &protoError.ProtocolError{
+                OpCode: regErrorCode,
+                ClientMsg: "Error occurs while server try to register the client",
+                InternalError: err,
+            }
         }
     }
     
@@ -88,40 +112,40 @@ func readClientHello(conn net.Conn) (byte, string, []byte, error) {
 }
 
 
-func getUser(clientId string, pubKey []byte) (user, error) {
-    sPubKey, err := storage.GetPublicKey(clientId)
-    if err != nil {
-        if errors.Is(err, pgx.ErrNoRows) {
-            if len(pubKey) == 0 {
-                return user{}, fmt.Errorf("Client is not registreted but opCode login were given")
-            }
-            fmt.Println("New user - will be added...")
+// func getUser(clientId string, pubKey []byte) (user, error) {
+//     sPubKey, err := storage.GetPublicKey(clientId)
+//     if err != nil {
+//         if errors.Is(err, pgx.ErrNoRows) {
+//             if len(pubKey) == 0 {
+//                 return user{}, &ProtocolError{missingPubKey, "Missing public key"}
+//             }
+//             fmt.Println("New user - will be added...")
 
-            nickname := generateNickname()
-            println(nickname)
-            err := storage.SaveDevice(clientId, nickname, pubKey)
-            if err != nil {
-                return user{}, fmt.Errorf("Registration error %v", err)
+//             nickname := generateNickname()
+//             println(nickname)
+//             err := storage.SaveDevice(clientId, nickname, pubKey)
+//             if err != nil {
+//                 return user{}, fmt.Errorf("Registration error %v", err)
                 
-            }
-            fmt.Printf("User - %v added to database!\n", nickname)
-             // opReg --> opSuccess(client)
-            return user{
-                clientId: clientId,
-                pubKey: pubKey,
-            }, nil
+//             }
+//             fmt.Printf("User - %v added to database!\n", nickname)
+//              // opReg --> opSuccess(client)
+//             return user{
+//                 clientId: clientId,
+//                 pubKey: pubKey,
+//             }, nil
 
-        } else {
-            return user{}, fmt.Errorf("Can not get public key from database \n")
+//         } else {
+//             return user{}, fmt.Errorf("Can not get public key from database \n")
             
-        }
-    } else {
-        return user{
-        clientId: clientId,
-        pubKey:   sPubKey, 
-    }, nil
-    }
-}
+//         }
+//     } else {
+//         return user{
+//         clientId: clientId,
+//         pubKey:   sPubKey, 
+//     }, nil
+//     }
+// }
 
 
 // func handleConnection(conn net.Conn) {
